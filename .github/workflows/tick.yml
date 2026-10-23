@@ -24,7 +24,7 @@ env:
 jobs:
   tick:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -95,6 +95,16 @@ jobs:
           if [ "$prev" != "failure" ]; then
             python3 src/alert.py "FAILED: cloud tick run - ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           fi
+
+      # GitHub's own cron is late or silent for long stretches, so each tick books the next one
+      # itself (~10 min later). Only when no other tick is already waiting, so there is one chain.
+      - name: Keep the clock running
+        if: always()
+        timeout-minutes: 12
+        run: |
+          sleep 420
+          waiting=$(gh run list --workflow tick.yml --json status -q '[.[] | select(.status=="queued" or .status=="pending" or .status=="waiting")] | length' || echo 1)
+          if [ "$waiting" = "0" ]; then gh workflow run tick.yml --ref "${{ github.ref_name }}"; fi
 
       - name: Remove credentials
         if: always()
