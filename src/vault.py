@@ -31,12 +31,15 @@ def key():
 
 
 def _stream(k, nonce, n):
-    out = bytearray()
-    counter = 0
-    while len(out) < n:
-        out += hashlib.sha256(k + nonce + counter.to_bytes(8, "big")).digest()
-        counter += 1
-    return bytes(out[:n])
+    prefix = k + nonce
+    return b"".join(hashlib.sha256(prefix + i.to_bytes(8, "big")).digest()
+                    for i in range((n + 31) // 32))[:n]
+
+
+def _xor(a: bytes, b: bytes) -> bytes:
+    if not a:
+        return b""
+    return (int.from_bytes(a, "big") ^ int.from_bytes(b, "big")).to_bytes(len(a), "big")
 
 
 def encrypt(data: bytes, k=None) -> bytes:
@@ -44,7 +47,7 @@ def encrypt(data: bytes, k=None) -> bytes:
     if not k:
         return data
     nonce = os.urandom(16)
-    ct = bytes(a ^ b for a, b in zip(data, _stream(k, nonce, len(data))))
+    ct = _xor(data, _stream(k, nonce, len(data)))
     mac = hmac.new(k, nonce + ct, hashlib.sha256).digest()
     return MAGIC + nonce + mac + ct
 
@@ -58,7 +61,7 @@ def decrypt(blob: bytes, k=None) -> bytes:
     nonce, mac, ct = blob[4:20], blob[20:52], blob[52:]
     if not hmac.compare_digest(mac, hmac.new(k, nonce + ct, hashlib.sha256).digest()):
         raise RuntimeError("state file failed its integrity check (wrong STATE_KEY?)")
-    return bytes(a ^ b for a, b in zip(ct, _stream(k, nonce, len(ct))))
+    return _xor(ct, _stream(k, nonce, len(ct)))
 
 
 def run_logged(name, cmd):

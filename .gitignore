@@ -1,6 +1,6 @@
 # Secrets - these must never leave this machine
 .env
-token.json
+token*.json
 client_secret_*.json
 
 # Local environment and generated media
