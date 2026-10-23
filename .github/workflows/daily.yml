@@ -17,7 +17,11 @@ on:
         required: true
         default: fill
         type: choice
-        options: [fill, summary]
+        options: [fill, summary, flow]
+      item:
+        description: For flow - the pool script id the laptop made in Google Flow
+        required: false
+        default: ''
 
 concurrency:
   group: producer
@@ -115,9 +119,12 @@ jobs:
 
       - name: Run
         timeout-minutes: 60
+        env:
+          FLOW_ITEM: ${{ inputs.item }}
         run: |
           case "${{ steps.pick.outputs.job }}" in
             fill)    python src/vault.py run fill -- python src/fill.py --max 2 ;;
+            flow)    python src/vault.py run flow -- python src/flow_build.py "$FLOW_ITEM" ;;
             summary) python src/vault.py run summary -- bash -c 'python src/analytics.py; python src/meta_insights.py; python src/experiments.py --tick; python src/engage.py; true' ;;
           esac
 
