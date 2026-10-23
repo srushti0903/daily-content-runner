@@ -1,0 +1,71 @@
+name: Tests
+
+# Code checks for changes to main only - never for the bot's own state commits. The suite is
+# hermetic (tests/conftest.py): no network, no GitHub releases, no real posting.
+on:
+  push:
+    branches: [live]
+    paths: ['src/**', 'tests/**', 'requirements*.txt', '.github/**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.11"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare
+        env:
+          DOTENV: ${{ secrets.DOTENV }}
+          BRAND_JSON: ${{ secrets.BRAND_JSON }}
+        run: |
+          umask 077
+          printf '%s\n' "$DOTENV" > .env
+          python3 .github/mask_secrets.py
+          python3 .github/brand.py apply
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Restore ffmpeg
+        uses: actions/cache@v4
+        id: ffmpeg
+        with:
+          path: ~/ffmpeg-bin
+          key: ffmpeg-static-v1
+
+      - name: Get ffmpeg
+        if: steps.ffmpeg.outputs.cache-hit != 'true'
+        timeout-minutes: 8
+        run: |
+          mkdir -p ~/ffmpeg-bin
+          if curl -fsSL --retry 3 --max-time 240 -o /tmp/ff.tar.xz https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz; then
+            tar -xJf /tmp/ff.tar.xz -C /tmp && cp /tmp/ffmpeg-*-static/ffmpeg /tmp/ffmpeg-*-static/ffprobe ~/ffmpeg-bin/
+          else
+            sudo timeout 300 apt-get install -y -qq --no-install-recommends ffmpeg && cp "$(which ffmpeg)" "$(which ffprobe)" ~/ffmpeg-bin/
+          fi
+
+      - name: Put ffmpeg on the path
+        run: echo "$HOME/ffmpeg-bin" >> "$GITHUB_PATH"
+
+      - name: Install lightweight test dependencies
+        run: pip install -q -r tests/requirements-test.txt
+
+      - name: Byte-compile every module
+        run: python -m py_compile src/*.py
+
+      - name: Run the test suite
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: python -m pytest tests/ -q

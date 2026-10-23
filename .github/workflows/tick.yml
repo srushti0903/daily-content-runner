@@ -1,0 +1,77 @@
+name: Tick
+
+# Every 10 minutes, 05:30-00:30 IST: Telegram, the posting buffer and the morning/night slots
+# (src/tick.py). Light on purpose - no ffmpeg, a slim package list, a hard 10-minute cap.
+on:
+  schedule:
+    - cron: '*/10 0-18 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: tick
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  actions: write
+
+env:
+  TZ: Asia/Kolkata
+  LT_ROLE: tick
+  GH_TOKEN: ${{ github.token }}
+  PYTHONUNBUFFERED: '1'
+
+jobs:
+  tick:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Credentials and state
+        env:
+          DOTENV: ${{ secrets.DOTENV }}
+          BRAND_JSON: ${{ secrets.BRAND_JSON }}
+          YT_TOKEN_JSON: ${{ secrets.YT_TOKEN_JSON }}
+          YT_CLIENT_SECRET_JSON: ${{ secrets.YT_CLIENT_SECRET_JSON }}
+          MEDIA_TOKEN: ${{ secrets.MEDIA_TOKEN }}
+        run: |
+          umask 077
+          printf '%s\n' "$DOTENV" > .env
+          printf '%s' "$YT_TOKEN_JSON" > token.json
+          printf '%s' "$YT_CLIENT_SECRET_JSON" > client_secret_github.json
+          python3 .github/mask_secrets.py
+          python3 .github/brand.py apply
+          git config --global url."https://x-access-token:${MEDIA_TOKEN}@github.com/srushti0903/static-files".insteadOf "https://github.com/srushti0903/static-files"
+          git config --global user.name content-bot
+          git config --global user.email bot@users.noreply.github.com
+          python3 src/state_sync.py pull
+
+      - name: Install Python packages
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install -q --retries 5 --timeout 30 -r requirements-tick.txt
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+
+      - name: Tick
+        timeout-minutes: 7
+        run: python src/vault.py run tick -- python -W ignore src/tick.py
+
+      - name: Save state
+        if: always()
+        env:
+          BRAND_JSON: ${{ secrets.BRAND_JSON }}
+        run: python3 src/state_sync.py push "tick ${{ github.run_id }}"
+
+      # only the first failure of a streak: a broken tick must not message her every 10 minutes
+      - name: Tell the owner if this run broke
+        if: failure()
+        run: |
+          prev=$(gh run list --workflow tick.yml --status completed --limit 1 --json conclusion -q '.[0].conclusion' || echo unknown)
+          if [ "$prev" != "failure" ]; then
+            python3 src/alert.py "FAILED: cloud tick run - ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          fi
+
+      - name: Remove credentials
+        if: always()
+        run: rm -f .env token.json client_secret_*.json

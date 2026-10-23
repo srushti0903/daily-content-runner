@@ -1,0 +1,29 @@
+# Secrets - these must never leave this machine
+.env
+token.json
+client_secret_*.json
+
+# Local environment and generated media
+.venv/
+output/
+upload_pack/
+logs/
+assets/clipbank/
+assets/music/
+__pycache__/
+*.pyc
+.DS_Store
+
+# Working notes stay on the laptop: the code repo is public
+data/*.md
+data/color_check/
+VEO_PROMPTS.md
+
+# Generated data: the cloud run rebuilds these itself
+data/*.json
+data/*.json
+*_depth.png
+
+# The channel name, kept out of the public code (.github/brand.py)
+.brand.json
+branding/
