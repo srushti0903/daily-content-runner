@@ -1,7 +1,7 @@
 name: Tick
 
 # Every 10 minutes, 05:30-00:30 IST: Telegram, the posting buffer and the morning/night slots
-# (src/tick.py). Light on purpose - no ffmpeg, a slim package list, a hard 10-minute cap.
+# (src/tick.py). Light on purpose: cached static ffmpeg, a slim package list, a 10-minute cap.
 on:
   schedule:
     - cron: '*/10 0-18 * * *'
@@ -24,7 +24,7 @@ env:
 jobs:
   tick:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -52,6 +52,30 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/venv"
           "$RUNNER_TEMP/venv/bin/pip" install -q --retries 5 --timeout 30 -r requirements-tick.txt
           echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+
+      # A static ffmpeg kept in the Actions cache: `apt-get update` once hung for 17 minutes.
+      - name: Restore ffmpeg
+        uses: actions/cache@v4
+        id: ffmpeg
+        with:
+          path: ~/ffmpeg-bin
+          key: ffmpeg-static-v1
+
+      - name: Get ffmpeg
+        if: steps.ffmpeg.outputs.cache-hit != 'true'
+        timeout-minutes: 8
+        run: |
+          mkdir -p ~/ffmpeg-bin
+          if curl -fsSL --retry 3 --max-time 240 -o /tmp/ff.tar.xz https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz; then
+            tar -xJf /tmp/ff.tar.xz -C /tmp && cp /tmp/ffmpeg-*-static/ffmpeg /tmp/ffmpeg-*-static/ffprobe ~/ffmpeg-bin/
+          else
+            sudo timeout 300 apt-get install -y -qq --no-install-recommends ffmpeg && cp "$(which ffmpeg)" "$(which ffprobe)" ~/ffmpeg-bin/
+          fi
+
+      - name: Put ffmpeg on the path
+        run: |
+          echo "$HOME/ffmpeg-bin" >> "$GITHUB_PATH"
+          "$HOME/ffmpeg-bin/ffmpeg" -version | head -1
 
       - name: Tick
         timeout-minutes: 7
