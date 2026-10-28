@@ -27,3 +27,7 @@ data/*.json
 # The channel name, kept out of the public code (.github/brand.py)
 .brand.json
 branding/
+
+# research notes and reports stay on the laptop
+research_notes/
+reports/
