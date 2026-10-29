@@ -77,7 +77,25 @@ def strip(root):
         if rel in PLAIN and text is not None and re.search(v["PATTERN"], text, re.I):
             sys.exit(f"the name is in a plain file: {rel}")
         if rel not in PLAIN:
-            p.write_bytes(vault.encrypt(p.read_bytes()))
+            data = p.read_bytes()
+            old = _committed(root, rel)
+            # an unchanged file keeps its committed ciphertext: encryption is randomised, so
+            # re-encrypting everything made every export re-upload the whole repo (2026-10-29)
+            p.write_bytes(old if old and _decrypts_to(old, data) else vault.encrypt(data))
+
+
+def _committed(root, rel):
+    """The file's bytes at HEAD of the export checkout, or None."""
+    import subprocess
+    r = subprocess.run(["git", "show", f"HEAD:{rel}"], cwd=root, capture_output=True)
+    return r.stdout if r.returncode == 0 else None
+
+
+def _decrypts_to(blob, plain):
+    try:
+        return vault.decrypt(blob) == plain
+    except Exception:
+        return False
 
 
 if __name__ == "__main__":
