@@ -31,3 +31,7 @@ branding/
 # research notes and reports stay on the laptop
 research_notes/
 reports/
+
+# generated: agent reports (with decrypted inputs) and made videos/stills
+data/agent_reports/
+veo_drop/
