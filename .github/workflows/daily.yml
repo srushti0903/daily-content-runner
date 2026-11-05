@@ -1,23 +1,20 @@
 name: Producer
 
-# The producers. Nothing here posts: finished videos go into the posting buffer through
-# data/inbox, and the tick (tick.yml) posts the best one at 09:00 and 20:00 IST.
+# Nothing here posts: the laptop's finished story goes into the posting buffer through
+# data/inbox (job flow), and the tick (tick.yml) posts it at 08:00 and 20:00 IST.
+# 2026-11-05: the free-pipeline "fill" runs are gone - their videos had not posted since 10-28.
 on:
   schedule:
     # UTC. IST = UTC + 5:30.
-    - cron: '0 21 * * *'    # 02:30 IST - fill the buffer (gets the day's free GPU quota first)
-    - cron: '30 1 * * *'    # 07:00 IST - fill
-    - cron: '30 7 * * *'    # 13:00 IST - fill
-    - cron: '0 12 * * *'    # 17:30 IST - fill
     - cron: '0 4 * * *'     # 09:30 IST - analytics + title tests + comment replies
   workflow_dispatch:
     inputs:
       job:
         description: What to run
         required: true
-        default: fill
+        default: summary
         type: choice
-        options: [fill, summary, flow]
+        options: [summary, flow]
       item:
         description: For flow - the pool script id the laptop made in Google Flow
         required: false
@@ -48,10 +45,8 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "job=${{ inputs.job }}" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event.schedule }}" = "0 4 * * *" ]; then
-            echo "job=summary" >> "$GITHUB_OUTPUT"
           else
-            echo "job=fill" >> "$GITHUB_OUTPUT"
+            echo "job=summary" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Credentials and state
@@ -103,19 +98,7 @@ jobs:
       - name: Install Python packages
         timeout-minutes: 15
         run: |
-          pip install -q --retries 5 --timeout 60 torch --index-url https://download.pytorch.org/whl/cpu
           pip install -q --retries 5 --timeout 60 -r requirements.txt
-
-      - name: Restore music
-        uses: actions/cache@v4
-        id: music
-        with:
-          path: assets/music
-          key: music-v1
-
-      - name: Download music
-        if: steps.music.outputs.cache-hit != 'true'
-        run: gh release download assets -p "*.mp3" -D assets/music
 
       - name: Run
         timeout-minutes: 60
@@ -123,7 +106,6 @@ jobs:
           FLOW_ITEM: ${{ inputs.item }}
         run: |
           case "${{ steps.pick.outputs.job }}" in
-            fill)    python src/vault.py run fill -- python src/fill.py --max 2 ;;
             flow)    python src/vault.py run flow -- python src/flow_build.py "$FLOW_ITEM" ;;
             summary) python src/vault.py run summary -- bash -c 'python src/analytics.py; python src/meta_insights.py; python src/experiments.py --tick; python src/engage.py; true' ;;
           esac
