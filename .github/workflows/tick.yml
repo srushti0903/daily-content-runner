@@ -97,13 +97,16 @@ jobs:
           fi
 
       # GitHub's own cron is late or silent for long stretches, so each tick books the next one
-      # itself (~10 min later). Only when no other tick is already waiting, so there is one chain.
+      # itself (~10 min later). Only when no other tick queued in the last 15 min is waiting, so
+      # there is one chain - a queued run GitHub never starts must not end it (2026-11-05: the
+      # chain stopped at 11:30 IST behind such a run).
       - name: Keep the clock running
         if: always()
         timeout-minutes: 12
         run: |
           sleep 420
-          waiting=$(gh run list --workflow tick.yml --json status -q '[.[] | select(.status=="queued" or .status=="pending" or .status=="waiting")] | length' || echo 1)
+          since=$(date -u -d '-15 min' +%Y-%m-%dT%H:%M:%SZ)
+          waiting=$(gh run list --workflow tick.yml --json status,createdAt -q "[.[] | select((.status==\"queued\" or .status==\"pending\" or .status==\"waiting\") and .createdAt > \"$since\")] | length" || echo 0)
           if [ "$waiting" = "0" ]; then gh workflow run tick.yml --ref "${{ github.ref_name }}"; fi
 
       - name: Remove credentials
