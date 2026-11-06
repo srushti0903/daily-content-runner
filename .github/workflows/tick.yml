@@ -107,7 +107,14 @@ jobs:
           sleep 420
           since=$(date -u -d '-15 min' +%Y-%m-%dT%H:%M:%SZ)
           waiting=$(gh run list --workflow tick.yml --json status,createdAt -q "[.[] | select((.status==\"queued\" or .status==\"pending\" or .status==\"waiting\") and .createdAt > \"$since\")] | length" || echo 0)
-          if [ "$waiting" = "0" ]; then gh workflow run tick.yml --ref "${{ github.ref_name }}"; fi
+          # GitHub's API sometimes answers 500 (2026-11-06 04:51 IST: the chain stopped and the
+          # 8 AM post was missed) - try a few times before giving up
+          if [ "$waiting" = "0" ]; then
+            for i in 1 2 3 4 5; do
+              gh workflow run tick.yml --ref "${{ github.ref_name }}" && break
+              sleep $((i * 20))
+            done
+          fi
 
       - name: Remove credentials
         if: always()
