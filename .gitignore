@@ -35,3 +35,17 @@ reports/
 # generated: agent reports (with decrypted inputs) and made videos/stills
 data/agent_reports/
 veo_drop/
+tools/ocr
+katha/cloudrepo/
+
+# DevGaatha (katha): generated media, caches and local state stay on the laptop
+katha/output/
+katha/work/
+katha/library/
+katha/state/
+katha/voice/
+katha/voice_test/
+katha/ref/
+katha/assets/ai/
+katha/PAUSED
+.pytest_cache/
